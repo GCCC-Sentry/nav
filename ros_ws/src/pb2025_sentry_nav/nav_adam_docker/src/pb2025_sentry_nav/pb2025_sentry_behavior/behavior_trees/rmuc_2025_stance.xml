@@ -1,0 +1,378 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ════════════════════════════════════════════════════════════════════
+  RoboMaster 2025 RMUC 7v7 哨兵姿态切换决策行为树
+  ════════════════════════════════════════════════════════════════════
+
+  姿态定义 (PublishStance stance_id):
+    0 = 移动姿态: 底盘功率 1.5x, 25%易伤, 冷却 1/3
+    1 = 进攻姿态: 冷却 3x,   底盘功率 1/2, 25%易伤
+    2 = 防御姿态: 50%防御,   底盘功率 1/2, 冷却 1/3
+
+  策略总览 (7分钟比赛, 420s):
+    Phase 1 - 开局冲锋 (420s~330s): 移动姿态, 快速抢占中央高地
+    Phase 2 - 主动交火 (330s~150s): 发现敌人→进攻姿态; 无敌人→移动姿态
+    Phase 3 - 末期保守 (150s~0s):   防御为主, 发现敌人才切进攻
+    紧急处理: HP<100→移动逃跑; HP<200→防御保命
+
+  约束:
+    - 姿态切换冷却 5s (裁判系统强制, 用 TickAfterTimeout 避免频繁发送)
+    - 单姿态累计 >3min 效果下降 (策略自然轮换规避)
+-->
+<root BTCPP_format="4">
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- 主入口: 姿态切换决策树                                         -->
+  <!-- 在主行为树中作为 SubTree 被周期性调用                           -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <BehaviorTree ID="stance_decision">
+    <!-- TickAfterTimeout: 至少间隔 6 秒才重新执行姿态决策
+         (裁判系统冷却 5s, 留 1s 余量) -->
+    <TickAfterTimeout timeout="6.0">
+      <Fallback>
+        <!-- ══════════════════════════════════════════════════ -->
+        <!-- 优先级 1: 死亡状态 → 不做姿态切换                  -->
+        <!-- ══════════════════════════════════════════════════ -->
+        <Sequence>
+          <Inverter>
+            <IsStatusOK ammo_min="0" heat_max="999999" hp_min="1"
+                        key_port="{@referee_robotStatus}"/>
+          </Inverter>
+          <!-- 已死亡, 跳过姿态决策, 返回 SUCCESS 不做操作 -->
+          <AlwaysSuccess/>
+        </Sequence>
+
+        <!-- ══════════════════════════════════════════════════ -->
+        <!-- 优先级 2: HP 极低 (<100) → 移动姿态紧急逃跑       -->
+        <!-- 理由: 1.5 倍底盘功率, 极速撤离到补给区             -->
+        <!-- ══════════════════════════════════════════════════ -->
+        <Sequence>
+          <Inverter>
+            <IsStatusOK ammo_min="0" heat_max="999999" hp_min="100"
+                        key_port="{@referee_robotStatus}"/>
+          </Inverter>
+          <PublishStance stance_id="0" topic_name="cmd_stance"/>
+        </Sequence>
+
+        <!-- ══════════════════════════════════════════════════ -->
+        <!-- 优先级 3: HP 较低 (<200) → 防御姿态保命            -->
+        <!-- 理由: 50% 防御增益大幅降低受到的伤害               -->
+        <!--        底盘功率虽降一半, 但保命优先                -->
+        <!-- ══════════════════════════════════════════════════ -->
+        <Sequence>
+          <Inverter>
+            <IsStatusOK ammo_min="0" heat_max="999999" hp_min="200"
+                        key_port="{@referee_robotStatus}"/>
+          </Inverter>
+          <PublishStance stance_id="2" topic_name="cmd_stance"/>
+        </Sequence>
+
+        <!-- ══════════════════════════════════════════════════ -->
+        <!-- 优先级 4: 比赛阶段性策略 (HP >= 200, 状态健康)     -->
+        <!-- ══════════════════════════════════════════════════ -->
+        <SubTree ID="stance_by_game_phase"/>
+      </Fallback>
+    </TickAfterTimeout>
+  </BehaviorTree>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- 按比赛阶段选择姿态 (HP >= 200 时进入)                          -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <BehaviorTree ID="stance_by_game_phase">
+    <Fallback>
+      <!-- ══════════════════════════════════════════════════════ -->
+      <!-- Phase 1: 开局冲锋 (剩余时间 330s~420s, 即开局 1.5 分钟) -->
+      <!-- 移动姿态: 底盘功率 1.5x, 最快速度抢占中央高地         -->
+      <!-- ══════════════════════════════════════════════════════ -->
+      <Sequence>
+        <IsGameStatus max_remain_time="420" min_remain_time="330"
+                      expected_game_progress="4"
+                      key_port="{@referee_gameStatus}"/>
+        <PublishStance stance_id="0" topic_name="cmd_stance"/>
+      </Sequence>
+
+      <!-- ══════════════════════════════════════════════════════ -->
+      <!-- Phase 2: 主动交火期 (剩余时间 150s~330s)              -->
+      <!-- 发现敌人 → 进攻姿态 (3 倍冷却, 极高输出)              -->
+      <!-- 未发现敌人 → 移动姿态 (快速巡逻机动)                  -->
+      <!-- ══════════════════════════════════════════════════════ -->
+      <Sequence>
+        <IsGameStatus max_remain_time="330" min_remain_time="150"
+                      expected_game_progress="4"
+                      key_port="{@referee_gameStatus}"/>
+        <SubTree ID="stance_combat_or_patrol"/>
+      </Sequence>
+
+      <!-- ══════════════════════════════════════════════════════ -->
+      <!-- Phase 3: 末期保守 (剩余时间 0s~150s, 最后 2.5 分钟)   -->
+      <!-- 默认防御姿态保存血量; 发现近距离敌人才切进攻           -->
+      <!-- ══════════════════════════════════════════════════════ -->
+      <Sequence>
+        <IsGameStatus max_remain_time="150" min_remain_time="0"
+                      expected_game_progress="4"
+                      key_port="{@referee_gameStatus}"/>
+        <SubTree ID="stance_endgame"/>
+      </Sequence>
+
+      <!-- 兜底: 非比赛阶段或未知状态 → 移动姿态 -->
+      <PublishStance stance_id="0" topic_name="cmd_stance"/>
+    </Fallback>
+  </BehaviorTree>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- 中期交火决策: 有敌人→进攻, 无敌人→移动                         -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <BehaviorTree ID="stance_combat_or_patrol">
+    <Fallback>
+      <!-- 检测到敌人 (任意步兵/英雄/哨兵, 8m 内) → 进攻姿态 -->
+      <Sequence>
+        <IsDetectEnemy armor_id="1;2;3;4;5;7" max_distance="8.0"
+                       key_port="{@detector_armors}"/>
+        <!-- HP >= 200 已在上层保证, 此处进攻姿态性价比最高:
+             3 倍冷却 = 持续输出能力极强
+             25% 易伤可接受 (中高血量承受得起) -->
+        <PublishStance stance_id="1" topic_name="cmd_stance"/>
+      </Sequence>
+
+      <!-- 正在被攻击但未看到敌人 → 防御姿态 (被偷袭场景) -->
+      <Sequence>
+        <IsAttacked gimbal_yaw="{gimbal_yaw}" gimbal_pitch="{gimbal_pitch}"
+                    key_port="{@referee_robotStatus}"/>
+        <PublishStance stance_id="2" topic_name="cmd_stance"/>
+      </Sequence>
+
+      <!-- 无敌人、未被攻击 → 移动姿态 (快速巡逻) -->
+      <PublishStance stance_id="0" topic_name="cmd_stance"/>
+    </Fallback>
+  </BehaviorTree>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- 末期决策: 保守防御为主, 近距离敌人才切进攻                      -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <BehaviorTree ID="stance_endgame">
+    <Fallback>
+      <!-- 近距离敌人 (5m 内) 且 HP 充足 (>= 250) → 进攻姿态
+           末期拼输出, 但要求血量更高才敢进攻 -->
+      <Sequence>
+        <IsDetectEnemy armor_id="1;2;3;4;5;7" max_distance="5.0"
+                       key_port="{@detector_armors}"/>
+        <IsStatusOK ammo_min="0" heat_max="999999" hp_min="250"
+                    key_port="{@referee_robotStatus}"/>
+        <PublishStance stance_id="1" topic_name="cmd_stance"/>
+      </Sequence>
+
+      <!-- 默认防御姿态: 50% 防御增益, 保存血量到比赛结束 -->
+      <PublishStance stance_id="2" topic_name="cmd_stance"/>
+    </Fallback>
+  </BehaviorTree>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- 完整主行为树: 集成姿态切换 + 现有巡逻逻辑                      -->
+  <!-- 替换 rmul_2026_patrol 作为 7v7 主行为树                        -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <BehaviorTree ID="rmuc_2025_with_stance">
+    <RetryUntilSuccessful num_attempts="-1">
+      <Sequence>
+        <Sleep msec="1000"/>
+        <!-- 1. 等待比赛开始 -->
+        <IsGameStatus name="CheckGameRunning"
+                      max_remain_time="420"
+                      min_remain_time="0"
+                      expected_game_progress="4"
+                      key_port="{@referee_gameStatus}"/>
+
+        <!-- 2. 初始姿态: 移动 (开局默认) -->
+        <PublishStance stance_id="0" topic_name="cmd_stance"/>
+
+        <!-- 3. 启动自旋 -->
+        <PublishSpinSpeed spin_speed="7.0" duration="0" topic_name="cmd_spin"/>
+
+        <!-- 4. 主循环: 并行执行姿态决策 + 存活检查/巡逻 -->
+        <Parallel success_count="1" failure_count="1">
+          <!-- 线程 A: 姿态决策 (持续循环) -->
+          <KeepRunningUntilFailure>
+            <Sequence>
+              <Sleep msec="1000"/>
+              <SubTree ID="stance_decision"/>
+            </Sequence>
+          </KeepRunningUntilFailure>
+
+          <!-- 线程 B: 原有巡逻/存活逻辑 -->
+          <SubTree ID="stance_check_alive"/>
+        </Parallel>
+      </Sequence>
+    </RetryUntilSuccessful>
+  </BehaviorTree>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- 以下子树用 stance_ 前缀, 与 rmul_2026_patrol.xml 互不冲突      -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <BehaviorTree ID="stance_check_alive">
+    <Fallback>
+      <!-- 情况1: 车辆已死亡, 等待复活 -->
+      <Sequence>
+        <Inverter>
+          <IsStatusOK ammo_min="0" heat_max="999999" hp_min="1"
+                      key_port="{@referee_robotStatus}"/>
+        </Inverter>
+        <SubTree ID="stance_wait_for_respawn"/>
+      </Sequence>
+
+      <!-- 情况2: 车辆存活, 检查状态 -->
+      <SubTree ID="stance_check_and_patrol"/>
+    </Fallback>
+  </BehaviorTree>
+
+  <BehaviorTree ID="stance_wait_for_respawn">
+    <Sequence>
+      <!-- 停止自旋和移动 -->
+      <PublishSpinSpeed spin_speed="0.0" duration="0" topic_name="cmd_spin"/>
+      <PublishTwist v_y="0.0" v_yaw="0.0" v_x="0.0" duration="0" topic_name="cmd_vel"/>
+      <!-- 死亡时切移动姿态, 复活后立即可用 -->
+      <PublishStance stance_id="0" topic_name="cmd_stance"/>
+      <!-- 循环等待复活 -->
+      <RetryUntilSuccessful num_attempts="-1">
+        <Sequence>
+          <Sleep msec="1000"/>
+          <IsStatusOK ammo_min="0" heat_max="999999" hp_min="1"
+                      key_port="{@referee_robotStatus}"/>
+        </Sequence>
+      </RetryUntilSuccessful>
+      <!-- 复活后恢复自旋和移动姿态 -->
+      <PublishSpinSpeed spin_speed="7.0" duration="0" topic_name="cmd_spin"/>
+      <PublishStance stance_id="0" topic_name="cmd_stance"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <BehaviorTree ID="stance_check_and_patrol">
+    <Fallback>
+      <!-- 情况1: 状态正常, 继续巡逻 -->
+      <Sequence>
+        <IsStatusOK ammo_min="0" heat_max="350" hp_min="200"
+                    key_port="{@referee_robotStatus}"/>
+        <SubTree ID="stance_patrol_logic"/>
+      </Sequence>
+
+      <!-- 情况2: 状态异常, 回基地补给 -->
+      <SubTree ID="stance_go_to_supply"/>
+    </Fallback>
+  </BehaviorTree>
+
+  <BehaviorTree ID="stance_patrol_logic">
+    <KeepRunningUntilFailure>
+      <Sequence>
+        <!-- 巡逻点1 -->
+        <RetryUntilSuccessful num_attempts="2">
+          <SendNav2Goal x="1.0" y="0.09" yaw="0.0" action_name="navigate_to_pose"/>
+        </RetryUntilSuccessful>
+        <Sleep msec="1000"/>
+
+        <!-- 状态检查 -->
+        <IsStatusOK ammo_min="0" heat_max="350" hp_min="200"
+                    key_port="{@referee_robotStatus}"/>
+
+        <!-- 巡逻点2 -->
+        <RetryUntilSuccessful num_attempts="2">
+          <SendNav2Goal x="2.0" y="0.01" yaw="1.57" action_name="navigate_to_pose"/>
+        </RetryUntilSuccessful>
+        <Sleep msec="1000"/>
+
+        <!-- 再次检查状态 -->
+        <IsStatusOK ammo_min="0" heat_max="350" hp_min="200"
+                    key_port="{@referee_robotStatus}"/>
+      </Sequence>
+    </KeepRunningUntilFailure>
+  </BehaviorTree>
+
+  <!-- 带姿态切换的补给逻辑 -->
+  <BehaviorTree ID="stance_go_to_supply">
+    <Sequence>
+      <!-- 回补给途中: HP<200 已在上层触发防御姿态
+           到达补给区附近后切移动姿态, 准备恢复后快速出击 -->
+
+      <!-- 前往补给区 -->
+      <RetryUntilSuccessful num_attempts="3">
+        <SendNav2Goal x="2.8" y="0.13" yaw="0.0" action_name="navigate_to_pose"/>
+      </RetryUntilSuccessful>
+
+      <!-- 到达补给区, 切移动姿态 (恢复后可立即高速机动) -->
+      <PublishStance stance_id="0" topic_name="cmd_stance"/>
+
+      <!-- 等待补给: HP>=360 或 超时 8 秒 -->
+      <Fallback>
+        <Timeout msec="8000">
+          <RetryUntilSuccessful num_attempts="-1">
+            <Sequence>
+              <Sleep msec="500"/>
+              <IsStatusOK ammo_min="0" heat_max="999999" hp_min="360"
+                          key_port="{@referee_robotStatus}"/>
+            </Sequence>
+          </RetryUntilSuccessful>
+        </Timeout>
+        <AlwaysSuccess/>
+      </Fallback>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- 节点模型定义                                                    -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <TreeNodesModel>
+    <Condition ID="IsGameStatus">
+      <input_port name="max_remain_time" default="420" type="int">Maximum remaining time (s)</input_port>
+      <input_port name="min_remain_time" default="0" type="int">Minimum remaining time (s)</input_port>
+      <input_port name="expected_game_progress" default="4" type="int">Expected game progress stage</input_port>
+      <input_port name="key_port" default="{@referee_gameStatus}" type="pb_rm_interfaces::msg::GameStatus_&lt;std::allocator&lt;void&gt; &gt;">GameStatus port on blackboard</input_port>
+    </Condition>
+    <Condition ID="IsStatusOK">
+      <input_port name="ammo_min" default="0" type="int">Minimum ammo</input_port>
+      <input_port name="heat_max" default="350" type="int">Maximum heat (sentry limit 400)</input_port>
+      <input_port name="hp_min" default="300" type="int">Minimum HP (sentry max 400)</input_port>
+      <input_port name="key_port" default="{@referee_robotStatus}" type="pb_rm_interfaces::msg::RobotStatus_&lt;std::allocator&lt;void&gt; &gt;">RobotStatus port on blackboard</input_port>
+    </Condition>
+    <Condition ID="IsDetectEnemy">
+      <input_port name="armor_id" default="1;2;3;4;5;7" type="std::vector&lt;int, std::allocator&lt;int&gt; &gt;">Target armor IDs</input_port>
+      <input_port name="max_distance" default="8.0" type="float">Max detection distance (m)</input_port>
+      <input_port name="key_port" default="{@detector_armors}" type="auto_aim_interfaces::msg::Armors_&lt;std::allocator&lt;void&gt; &gt;">Vision detector port</input_port>
+    </Condition>
+    <Condition ID="IsAttacked">
+      <output_port name="gimbal_yaw" default="{gimbal_yaw}" type="float">Hit direction yaw</output_port>
+      <output_port name="gimbal_pitch" default="{gimbal_pitch}" type="float">Hit direction pitch</output_port>
+      <input_port name="key_port" default="{@referee_robotStatus}" type="pb_rm_interfaces::msg::RobotStatus_&lt;std::allocator&lt;void&gt; &gt;">RobotStatus port on blackboard</input_port>
+    </Condition>
+    <Condition ID="IsRfidDetected">
+      <input_port name="friendly_supply_zone_exchange" default="false" type="bool">己方与兑换区重叠的补给区</input_port>
+      <input_port name="friendly_supply_zone_non_exchange" default="false" type="bool">己方与兑换区不重叠的补给区</input_port>
+      <input_port name="center_gain_point" default="false" type="bool">中心增益点</input_port>
+      <input_port name="friendly_fortress_gain_point" default="false" type="bool">己方堡垒增益点</input_port>
+      <input_port name="key_port" default="{@referee_rfidStatus}" type="pb_rm_interfaces::msg::RfidStatus_&lt;std::allocator&lt;void&gt; &gt;">RfidStatus port on blackboard</input_port>
+    </Condition>
+    <Action ID="PublishStance">
+      <input_port name="stance_id" default="0" type="double">Stance: 0=movement, 1=attack, 2=defense</input_port>
+      <input_port name="topic_name" default="cmd_stance" type="std::string">Topic name</input_port>
+    </Action>
+    <Action ID="PublishSpinSpeed">
+      <input_port name="spin_speed" default="0.0" type="double">Angular Z velocity (rad/s)</input_port>
+      <input_port name="duration" type="int">Duration in milliseconds</input_port>
+      <input_port name="topic_name" default="cmd_spin" type="std::string">Topic name</input_port>
+    </Action>
+    <Action ID="PublishTwist">
+      <input_port name="v_x" default="0.0" type="double">Linear X (m/s)</input_port>
+      <input_port name="v_y" default="0.0" type="double">Linear Y (m/s)</input_port>
+      <input_port name="v_yaw" default="0.0" type="double">Angular Z (rad/s)</input_port>
+      <input_port name="duration" type="int">Duration in milliseconds</input_port>
+      <input_port name="topic_name" default="cmd_vel" type="std::string">Topic name</input_port>
+    </Action>
+    <Action ID="SendNav2Goal">
+      <input_port name="x" default="0.0" type="double">Goal X</input_port>
+      <input_port name="y" default="0.0" type="double">Goal Y</input_port>
+      <input_port name="yaw" default="0.0" type="double">Goal Yaw (rad)</input_port>
+      <input_port name="action_name" default="navigate_to_pose" type="std::string">Action server name</input_port>
+    </Action>
+    <Decorator ID="TickAfterTimeout">
+      <input_port name="timeout" type="float">Seconds before re-tick</input_port>
+    </Decorator>
+  </TreeNodesModel>
+
+</root>

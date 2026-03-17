@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4">
+
+  <BehaviorTree ID="check_game_start">
+    <RetryUntilSuccessful num_attempts="-1">
+      <Sequence>
+        <Sleep msec="1000"/>
+        <IsGameStatus name="IsGameStart"
+                      max_remain_time="420"
+                      min_remain_time="0"
+                      expected_game_progress="4"
+                      key_port="{@referee_gameStatus}"/>
+      </Sequence>
+    </RetryUntilSuccessful>
+  </BehaviorTree>
+
+  <!-- 巡逻: PubNav2Goal 发布即走, 8秒后发下一个点覆盖 -->
+  <BehaviorTree ID="patrol_logic">
+    <KeepRunningUntilFailure>
+      <Sequence>
+        <PubNav2Goal x="-2.5" y="-4.9" yaw="0.0" topic_name="goal_pose"/>
+        <Sleep msec="8000"/>
+        <PubNav2Goal x="-2.38" y="-5.02" yaw="1.57" topic_name="goal_pose"/>
+        <Sleep msec="8000"/>
+      </Sequence>
+    </KeepRunningUntilFailure>
+  </BehaviorTree>
+
+  <!-- 回补给区 -->
+  <BehaviorTree ID="go_to_supply_zone">
+    <Sequence>
+      <PubNav2Goal x="2.8" y="0.13" yaw="0.0" topic_name="goal_pose"/>
+      <Fallback>
+        <Timeout msec="8000">
+          <RetryUntilSuccessful num_attempts="-1">
+            <Sequence>
+              <Sleep msec="500"/>
+              <IsStatusOK ammo_min="0" heat_max="999999" hp_min="360" key_port="{@referee_robotStatus}"/>
+            </Sequence>
+          </RetryUntilSuccessful>
+        </Timeout>
+        <AlwaysSuccess/>
+      </Fallback>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- 死亡等复活 -->
+  <BehaviorTree ID="wait_for_respawn">
+    <Sequence>
+      <PublishSpinSpeed spin_speed="0.0" duration="0" topic_name="cmd_spin"/>
+      <PublishTwist v_y="0.0" v_yaw="0.0" v_x="0.0" duration="0" topic_name="cmd_vel"/>
+      <RetryUntilSuccessful num_attempts="-1">
+        <Sequence>
+          <Sleep msec="1000"/>
+          <IsStatusOK ammo_min="0" heat_max="999999" hp_min="1" key_port="{@referee_robotStatus}"/>
+        </Sequence>
+      </RetryUntilSuccessful>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- 主行为树: 单层 ReactiveFallback, 每 tick 从头评估优先级 -->
+  <BehaviorTree ID="rmul_2026_patrol">
+    <RetryUntilSuccessful num_attempts="-1">
+      <Sequence>
+        <Sleep msec="1000"/>
+        <IsGameStatus name="CheckGameRunning"
+                      max_remain_time="420"
+                      min_remain_time="0"
+                      expected_game_progress="4"
+                      key_port="{@referee_gameStatus}"/>
+
+        <PublishSpinSpeed spin_speed="7.0" duration="0" topic_name="cmd_spin"/>
+
+        <ReactiveFallback>
+          <!-- 优先级1: 死亡(HP=0) → 停车等复活 -->
+          <ReactiveSequence>
+            <Inverter>
+              <IsStatusOK ammo_min="0" heat_max="999999" hp_min="1" key_port="{@referee_robotStatus}"/>
+            </Inverter>
+            <SubTree ID="wait_for_respawn"/>
+          </ReactiveSequence>
+
+          <!-- 优先级2: HP>=200 → 巡逻 (只看HP, heat_max=999999 避免热量闪烁打断导航) -->
+          <ReactiveSequence>
+            <IsStatusOK ammo_min="0" heat_max="999999" hp_min="200" key_port="{@referee_robotStatus}"/>
+            <SubTree ID="patrol_logic"/>
+          </ReactiveSequence>
+
+          <!-- 优先级3: HP<200 → 立即回补给区 -->
+          <SubTree ID="go_to_supply_zone"/>
+        </ReactiveFallback>
+      </Sequence>
+    </RetryUntilSuccessful>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Condition ID="IsGameStatus">
+      <input_port name="max_remain_time" default="420" type="int">Maximum remaining time (s)</input_port>
+      <input_port name="min_remain_time" default="0" type="int">Minimum remaining time (s)</input_port>
+      <input_port name="expected_game_progress" default="4" type="int">Expected game progress stage</input_port>
+      <input_port name="key_port" default="{@referee_gameStatus}" type="pb_rm_interfaces::msg::GameStatus_&lt;std::allocator&lt;void&gt; &gt;">GameStatus port on blackboard</input_port>
+    </Condition>
+    <Condition ID="IsRfidDetected">
+      <input_port name="friendly_supply_zone_exchange" default="false" type="bool">己方与兑换区重叠的补给区</input_port>
+      <input_port name="friendly_supply_zone_non_exchange" default="false" type="bool">己方与兑换区不重叠的补给区 / RMUL 补给区</input_port>
+      <input_port name="center_gain_point" default="false" type="bool">中心增益点（仅 RMUL 适用）</input_port>
+      <input_port name="friendly_fortress_gain_point" default="false" type="bool">己方堡垒增益点</input_port>
+      <input_port name="key_port" default="{@referee_rfidStatus}" type="pb_rm_interfaces::msg::RfidStatus_&lt;std::allocator&lt;void&gt; &gt;">RfidStatus port on blackboard</input_port>
+    </Condition>
+    <Condition ID="IsStatusOK">
+      <input_port name="ammo_min" default="0" type="int">Lower then minimum ammo will return FAILURE</input_port>
+      <input_port name="heat_max" default="350" type="int">Maximum heat. NOTE: Sentry heat limit is 400</input_port>
+      <input_port name="hp_min" default="300" type="int">Minimum HP. NOTE: Sentry init/max HP is 400</input_port>
+      <input_port name="key_port" default="{@referee_robotStatus}" type="pb_rm_interfaces::msg::RobotStatus_&lt;std::allocator&lt;void&gt; &gt;">RobotStatus port on blackboard</input_port>
+    </Condition>
+    <Action ID="PubNav2Goal">
+      <input_port name="x" default="0.0" type="double">Goal X coordinate</input_port>
+      <input_port name="y" default="0.0" type="double">Goal Y coordinate</input_port>
+      <input_port name="yaw" default="0.0" type="double">Goal Yaw angle (rad)</input_port>
+      <input_port name="topic_name" default="__default__placeholder__" type="std::string">Topic name</input_port>
+    </Action>
+    <Action ID="PublishSpinSpeed">
+      <input_port name="spin_speed" default="0.000000" type="double">Angular Z velocity (rad/s)</input_port>
+      <input_port name="duration" type="int">Publish then sleep duration in milliseconds</input_port>
+      <input_port name="topic_name" default="__default__placeholder__" type="std::string">Topic name</input_port>
+    </Action>
+    <Action ID="PublishTwist">
+      <input_port name="v_y" default="0.000000" type="double">Linear Y velocity (m/s)</input_port>
+      <input_port name="v_yaw" default="0.000000" type="double">Angular Z velocity (rad/s)</input_port>
+      <input_port name="v_x" default="0.000000" type="double">Linear X velocity (m/s)</input_port>
+      <input_port name="duration" type="int">Publish then sleep duration in milliseconds</input_port>
+      <input_port name="topic_name" default="__default__placeholder__" type="std::string">Topic name</input_port>
+    </Action>
+    <Action ID="SendNav2Goal">
+      <input_port name="x" default="0.0" type="double">Goal X</input_port>
+      <input_port name="y" default="0.0" type="double">Goal Y</input_port>
+      <input_port name="yaw" default="0.0" type="double">Goal Yaw</input_port>
+      <input_port name="action_name" type="std::string" default="navigate_to_pose">Action server name</input_port>
+    </Action>
+  </TreeNodesModel>
+
+</root>

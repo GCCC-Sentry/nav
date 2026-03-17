@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4">
+
+  <BehaviorTree ID="rmul_supply">
+    <WhileDoElse>
+      <IsRfidDetected friendly_supply_zone_exchange="false"
+                      friendly_supply_zone_non_exchange="true"
+                      center_gain_point="false"
+                      friendly_fortress_gain_point="false"
+                      key_port="{@referee_rfidStatus}"/>
+      <RetryUntilSuccessful num_attempts="-1">
+        <IsStatusOK ammo_min="0"
+                    heat_max="100"
+                    hp_min="399"
+                    key_port="{@referee_robotStatus}"/>
+      </RetryUntilSuccessful>
+      <Sequence>
+        <SendNav2Goal action_name="navigate_to_pose"
+                      goal="{
+                              &quot;header&quot;: {
+                                &quot;stamp&quot;: {&quot;sec&quot;: 0, &quot;nanosec&quot;: 0},
+                                &quot;frame_id&quot;: &quot;map&quot;
+                              },
+                              &quot;pose&quot;: {
+                                &quot;position&quot;: {&quot;x&quot;: 0.0, &quot;y&quot;: 0.0, &quot;z&quot;: 0.0},
+                                &quot;orientation&quot;: {&quot;x&quot;: 0.0, &quot;y&quot;: 0.0, &quot;z&quot;: 0.0, &quot;w&quot;: 1.0}
+                              }
+                            }"/>
+        <Sleep msec="500"/>
+      </Sequence>
+    </WhileDoElse>
+  </BehaviorTree>
+
+  <BehaviorTree ID="test_attack_pose">
+    <KeepRunningUntilFailure>
+      <ForceSuccess>
+        <Sequence>
+          <CalculateAttackPose costmap_port="{@nav_globalCostmap}"
+                               tracker_port="{@tracker_target}"
+                               goal="{attack_pose}"
+                               topic_name="debug_attack_pose"/>
+          <PubNav2Goal goal="{attack_pose}"
+                       topic_name="goal_pose"/>
+        </Sequence>
+      </ForceSuccess>
+    </KeepRunningUntilFailure>
+  </BehaviorTree>
+
+  <BehaviorTree ID="test_attacked_feedback">
+    <KeepRunningUntilFailure>
+      <WhileDoElse>
+        <IsAttacked gimbal_yaw="{gimbal_yaw}"
+                    gimbal_pitch="{gimbal_pitch}"
+                    key_port="{@referee_robotStatus}"/>
+        <Sequence>
+          <PublishGimbalAbsolute topic_name="cmd_gimbal"
+                                 duration="500"
+                                 gimbal_yaw="{gimbal_yaw}"
+                                 gimbal_pitch="{gimbal_pitch}"/>
+          <PublishTwist v_y="0.0"
+                        v_yaw="3.14"
+                        v_x="0.0"
+                        duration="2000"
+                        topic_name="cmd_vel"/>
+          <PublishTwist v_y="0.0"
+                        v_yaw="0.0"
+                        v_x="1.0"
+                        duration="1000"
+                        topic_name="cmd_vel"/>
+          <PublishTwist v_y="0.0"
+                        v_yaw="3.14"
+                        v_x="1.0"
+                        duration="1000"
+                        topic_name="cmd_vel"/>
+        </Sequence>
+        <AlwaysSuccess/>
+      </WhileDoElse>
+    </KeepRunningUntilFailure>
+  </BehaviorTree>
+
+  <BehaviorTree ID="test_gimbal_absolute">
+    <PublishGimbalAbsolute topic_name="cmd_gimbal"
+                           duration="5000"
+                           gimbal_yaw="-1.57"
+                           gimbal_pitch="1.0"/>
+  </BehaviorTree>
+
+  <BehaviorTree ID="test_gimbal_velocity">
+    <PublishGimbalVelocity duration="5000"
+                           yaw_min="-1.57"
+                           pitch_min="-0.3"
+                           yaw_max="1.57"
+                           pitch_max="0.3"
+                           gimbal_vel_yaw="1.5"
+                           topic_name="cmd_gimbal"
+                           gimbal_vel_pitch="1.0"/>
+  </BehaviorTree>
+
+  <BehaviorTree ID="test_go_to_supply">
+    <Repeat num_cycles="-1">
+      <WhileDoElse>
+        <IsStatusOK ammo_min="0"
+                    heat_max="350"
+                    hp_min="350"
+                    key_port="{@referee_robotStatus}"/>
+        <Sequence>
+          <SendNav2Goal action_name="navigate_to_pose"
+                        goal="{
+                                &quot;header&quot;: {
+                                  &quot;stamp&quot;: {&quot;sec&quot;: 0, &quot;nanosec&quot;: 0},
+                                  &quot;frame_id&quot;: &quot;map&quot;
+                                },
+                                &quot;pose&quot;: {
+                                  &quot;position&quot;: {&quot;x&quot;: 3.0, &quot;y&quot;: 0.0, &quot;z&quot;: 0.0},
+                                  &quot;orientation&quot;: {&quot;x&quot;: 0.0, &quot;y&quot;: 0.0, &quot;z&quot;: 0.0, &quot;w&quot;: 1.0}
+                                }
+                              }"/>
+          <Sleep msec="500"/>
+        </Sequence>
+        <SubTree ID="rmul_supply"/>
+      </WhileDoElse>
+    </Repeat>
+  </BehaviorTree>
+
+  <BehaviorTree ID="test_is_detect_enemy">
+    <ReactiveFallback>
+      <Inverter>
+        <IsDetectEnemy armor_id="1;2;3;4;5;7"
+                       max_distance="8.0"
+                       key_port="{@detector_armors}"/>
+      </Inverter>
+      <PublishTwist v_y="0.0"
+                    v_yaw="6.28"
+                    v_x="0.0"
+                    duration="3000"
+                    topic_name="cmd_vel"/>
+    </ReactiveFallback>
+    </BehaviorTree>
+
+  </root>

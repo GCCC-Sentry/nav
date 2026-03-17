@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4">
+
+  <BehaviorTree ID="check_game_start">
+    <!-- 持续检查直到比赛开始 -->
+    <RetryUntilSuccessful num_attempts="-1">
+      <Sequence>
+        <Sleep msec="1000"/>
+        <IsGameStatus name="IsGameStart"
+                      max_remain_time="420"
+                      min_remain_time="0"
+                      expected_game_progress="4"
+                      key_port="{@referee_gameStatus}"/>
+      </Sequence>
+    </RetryUntilSuccessful>
+  </BehaviorTree>
+
+  <BehaviorTree ID="patrol_logic">
+     <KeepRunningUntilFailure>
+        <Sequence>
+            <!-- 巡逻点1 -->
+            <RetryUntilSuccessful num_attempts="2">
+              <SendNav2Goal x="10.0" y="0.9" yaw="0.0" action_name="navigate_to_pose"/>
+            </RetryUntilSuccessful>
+            <Sleep msec="1000"/>
+
+            <!-- 修复: 添加状态检查，HP<200时退出巡逻 -->
+            <IsStatusOK ammo_min="0" heat_max="350" hp_min="200" key_port="{@referee_robotStatus}"/>
+
+            <!-- 巡逻点2 -->
+            <RetryUntilSuccessful num_attempts="2">
+              <SendNav2Goal x="23.0" y="3.0" yaw="1.57" action_name="navigate_to_pose"/>
+            </RetryUntilSuccessful>
+            <Sleep msec="1000"/>
+
+            <!-- 修复: 再次检查状态 -->
+            <IsStatusOK ammo_min="0" heat_max="350" hp_min="200" key_port="{@referee_robotStatus}"/>
+        </Sequence>
+     </KeepRunningUntilFailure>
+  </BehaviorTree>
+
+  <BehaviorTree ID="go_to_supply_zone">
+    <Sequence>
+      <!-- 前往补给区 -->
+      <RetryUntilSuccessful num_attempts="3">
+        <SendNav2Goal x="26.8" y="6.13" yaw="0.0" action_name="navigate_to_pose"/>
+      </RetryUntilSuccessful>
+
+      <!-- 等待补给：要么HP>=360，要么超时8秒 -->
+      <Fallback>
+        <Timeout msec="8000">
+          <RetryUntilSuccessful num_attempts="-1">
+            <Sequence>
+              <Sleep msec="500"/>
+              <IsStatusOK ammo_min="0" heat_max="999999" hp_min="360" key_port="{@referee_robotStatus}"/>
+            </Sequence>
+          </RetryUntilSuccessful>
+        </Timeout>
+        <AlwaysSuccess/>
+      </Fallback>
+    </Sequence>
+  </BehaviorTree>
+
+  <BehaviorTree ID="wait_for_respawn">
+    <Sequence>
+      <!-- 停止自旋 -->
+      <PublishSpinSpeed spin_speed="0.0" duration="0" topic_name="cmd_spin"/>
+      <!-- 停止移动 -->
+      <PublishTwist v_y="0.0" v_yaw="0.0" v_x="0.0" duration="0" topic_name="cmd_vel"/>
+      <!-- 循环等待复活 -->
+      <RetryUntilSuccessful num_attempts="-1">
+        <Sequence>
+          <Sleep msec="1000"/>
+          <!-- 检查是否复活（HP>0） -->
+          <IsStatusOK ammo_min="0" heat_max="999999" hp_min="1" key_port="{@referee_robotStatus}"/>
+        </Sequence>
+      </RetryUntilSuccessful>
+    </Sequence>
+  </BehaviorTree>
+
+  <BehaviorTree ID="check_alive_and_status">
+    <Fallback>
+      <!-- 情况1: 车辆已死亡，等待复活 -->
+      <Sequence>
+        <Inverter>
+          <IsStatusOK ammo_min="0" heat_max="999999" hp_min="1" key_port="{@referee_robotStatus}"/>
+        </Inverter>
+        <SubTree ID="wait_for_respawn"/>
+      </Sequence>
+
+      <!-- 情况2: 车辆存活，检查状态 -->
+      <SubTree ID="check_robot_status_and_patrol"/>
+    </Fallback>
+  </BehaviorTree>
+
+  <BehaviorTree ID="check_robot_status_and_patrol">
+    <Fallback>
+      <!-- 情况1: 状态正常，继续巡逻 -->
+      <Sequence>
+         <IsStatusOK ammo_min="0"
+                     heat_max="350"
+                     hp_min="200"
+                     key_port="{@referee_robotStatus}"/>
+         <SubTree ID="patrol_logic"/>
+      </Sequence>
+
+      <!-- 情况2: 状态异常，回基地补给 -->
+      <SubTree ID="go_to_supply_zone"/>
+    </Fallback>
+  </BehaviorTree>
+
+  <BehaviorTree ID="rmul_2026_patrol">
+    <RetryUntilSuccessful num_attempts="-1">
+      <Sequence>
+        <Sleep msec="1000"/>
+        <!-- 1. 检查比赛是否在进行中 -->
+        <IsGameStatus name="CheckGameRunning"
+                      max_remain_time="420"
+                      min_remain_time="0"
+                      expected_game_progress="4"
+                      key_port="{@referee_gameStatus}"/>
+
+        <!-- 2. 启动自旋 -->
+        <PublishSpinSpeed spin_speed="7.0" duration="0" topic_name="cmd_spin"/>
+
+        <!-- 3. 主循环：持续检查存活和状态 -->
+        <SubTree ID="check_alive_and_status"/>
+      </Sequence>
+    </RetryUntilSuccessful>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Condition ID="IsGameStatus">
+      <input_port name="max_remain_time" default="420" type="int">Maximum remaining time (s)</input_port>
+      <input_port name="min_remain_time" default="0" type="int">Minimum remaining time (s)</input_port>
+      <input_port name="expected_game_progress" default="4" type="int">Expected game progress stage</input_port>
+      <input_port name="key_port" default="{@referee_gameStatus}" type="pb_rm_interfaces::msg::GameStatus_&lt;std::allocator&lt;void&gt; &gt;">GameStatus port on blackboard</input_port>
+    </Condition>
+    <Condition ID="IsRfidDetected">
+      <input_port name="friendly_supply_zone_exchange" default="false" type="bool">己方与兑换区重叠的补给区</input_port>
+      <input_port name="friendly_supply_zone_non_exchange" default="false" type="bool">己方与兑换区不重叠的补给区 / RMUL 补给区</input_port>
+      <input_port name="center_gain_point" default="false" type="bool">中心增益点（仅 RMUL 适用）</input_port>
+      <input_port name="friendly_fortress_gain_point" default="false" type="bool">己方堡垒增益点</input_port>
+      <input_port name="key_port" default="{@referee_rfidStatus}" type="pb_rm_interfaces::msg::RfidStatus_&lt;std::allocator&lt;void&gt; &gt;">RfidStatus port on blackboard</input_port>
+    </Condition>
+    <Condition ID="IsStatusOK">
+      <input_port name="ammo_min" default="0" type="int">Lower then minimum ammo will return FAILURE</input_port>
+      <input_port name="heat_max" default="350" type="int">Maximum heat. NOTE: Sentry heat limit is 400</input_port>
+      <input_port name="hp_min" default="300" type="int">Minimum HP. NOTE: Sentry init/max HP is 400</input_port>
+      <input_port name="key_port" default="{@referee_robotStatus}" type="pb_rm_interfaces::msg::RobotStatus_&lt;std::allocator&lt;void&gt; &gt;">RobotStatus port on blackboard</input_port>
+    </Condition>
+    <Action ID="PubNav2Goal">
+
+      <input_port name="x" default="0.0" type="double">Goal X coordinate</input_port>
+      <input_port name="y" default="0.0" type="double">Goal Y coordinate</input_port>
+      <input_port name="yaw" default="0.0" type="double">Goal Yaw angle (rad)</input_port>
+      <input_port name="topic_name" default="__default__placeholder__" type="std::string">Topic name</input_port>
+    </Action>
+    <Action ID="PublishSpinSpeed">
+      <input_port name="spin_speed" default="0.000000" type="double">Angular Z velocity (rad/s)</input_port>
+      <input_port name="duration" type="int">Publish then sleep duration in milliseconds</input_port>
+      <input_port name="topic_name" default="__default__placeholder__" type="std::string">Topic name</input_port>
+    </Action>
+    <Action ID="PublishTwist">
+      <input_port name="v_y" default="0.000000" type="double">Linear Y velocity (m/s)</input_port>
+      <input_port name="v_yaw" default="0.000000" type="double">Angular Z velocity (rad/s)</input_port>
+      <input_port name="v_x" default="0.000000" type="double">Linear X velocity (m/s)</input_port>
+      <input_port name="duration" type="int">Publish then sleep duration in milliseconds</input_port>
+      <input_port name="topic_name" default="__default__placeholder__" type="std::string">Topic name</input_port>
+    </Action>
+    <Action ID="SendNav2Goal">
+      <input_port name="x" default="0.0" type="double">Goal X</input_port>
+      <input_port name="y" default="0.0" type="double">Goal Y</input_port>
+      <input_port name="yaw" default="0.0" type="double">Goal Yaw</input_port>
+      <input_port name="action_name" type="std::string" default="navigate_to_pose">Action server name</input_port>
+    </Action>
+  </TreeNodesModel>
+
+</root>

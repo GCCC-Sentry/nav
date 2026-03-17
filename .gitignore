@@ -1,0 +1,34 @@
+# ROS 编译文件
+ros_ws/build/
+ros_ws/devel/
+ros_ws/install/
+ros_ws/log/
+
+# 编译产物
+*.o
+*.so
+*.pyc
+__pycache__/
+*.egg-info/
+
+# PCD 点云文件
+*.pcd
+
+# ROS bag 文件
+*.db3
+rosbag2_*/
+
+# IDE 文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 临时文件
+*.log
+*.tmp
+
+# Core dump 文件
+core
+core.*
