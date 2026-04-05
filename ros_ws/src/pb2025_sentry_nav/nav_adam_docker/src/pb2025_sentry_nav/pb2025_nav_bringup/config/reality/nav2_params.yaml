@@ -1,31 +1,31 @@
 livox_ros_driver2:
   ros__parameters:
-    xfer_format: 4                                      # 0-PointCloud2Msg(PointXYZRTL), 1-LivoxCustomMsg, 2-PclPxyziMsg, 3-LivoxImuMsg, 4-AllMsg
+    xfer_format: 1                                     # 0-PointCloud2Msg(PointXYZRTL), 1-LivoxCustomMsg, 2-PclPxyziMsg, 3-LivoxImuMsg, 4-AllMsg这是所有消息都发布的格式
     multi_topic: 0                                      # 0-All LiDARs share the same topic, 1-One LiDAR one topic
     data_src: 0                                         # 0-lidar, others-Invalid data src
-    publish_freq: 20.0                                  # frequency of publish, 5.0, 10.0, 20.0, 50.0, etc.
+    publish_freq: 20.0                                  # frequency of publish, 5.0, 10.0, 20.0, 50.0, etc.数据发布频率（Hz），提高了耗费算力
     output_data_type: 0
-    frame_id: front_mid360
+    frame_id: front_mid360                              #雷达的坐标系名称，必须与后续所有配置中提到的雷达帧名称一致。
     user_config_path: $(find-pkg-share pb2025_nav_bringup)/config/reality/mid360_user_config.json
     cmdline_input_bd_code: livox0000000001
     lvx_file_path: ""
 
 point_lio:
   ros__parameters:
-    use_imu_as_input: False                             # Change to True to use IMU as input of Point-LIO
+    use_imu_as_input: False                             # Change to True to use IMU as input of Point-LIO。是否使用IMU作为状态预测的输入。在高速或剧烈运动时设为True可提高精度，但对IMU质量要求高。
     prop_at_freq_of_imu: True
-    check_satu: True
-    init_map_size: 10
-    point_filter_num: 8                                 # Options: 4, 3
+    check_satu: True  #True 关闭包和检查，近距离 + 高反光材质的组合场景，近距离高反射 人为调高雷达的发射功率、增大增益参数都会导致包和，包和就是雷达被强光干瞎了
+    init_map_size: 5 # 初始地图大小（米）。建议根据环境大小设置，较大值能容纳更多环境点，但会增加计算量。
+    point_filter_num: 4                                 # Options: 4, 3。点云降采样的比例。增大此值会过滤更多点，提高计算速度但降低地图精度。减小此值会保留更多点，地图更精细但计算更慢。
     space_down_sample: True
-    filter_size_surf: 0.2                               # Options: 0.5, 0.3, 0.2, 0.15, 0.1
-    filter_size_map: 0.2                                # Options: 0.5, 0.3, 0.15, 0.1
-    ivox_nearby_type: 18                                # Options: 0, 6, 18, 26
+    filter_size_surf: 0.6                              # Options: 0.5, 0.3, 0.2, 0.15, 0.1。点云体素滤波的网格大小（米）。增大会显著加速计算并减少内存占用，但会损失地图细节，可能无法通过狭窄区域。减小会保留更多环境细节，但计算量巨大。
+    filter_size_map: 0.6                               # Options: 0.5, 0.3, 0.15, 0.1。同上
+    ivox_nearby_type: 18                                # Options: 0, 6, 18, 26。iVox（一种高效地图数据结构）的邻近点搜索模式。18是性能和精度的良好平衡。通常不需要修改。
     runtime_pos_log_enable: False                       # Option: True
 
     common:
-      lid_topic: "livox/lidar"
-      imu_topic: "livox/imu"
+      lid_topic: "livox/lidar"                          # 雷达数据的Topic名称，必须与驱动发布的Topic匹配。   
+      imu_topic: "livox/imu"                            # IMU数据的Topic名称，必须与驱动发布的Topic匹配。
       con_frame: False                                  # True: if you need to combine several LiDAR frames into one
       con_frame_num: 1                                  # the number of frames combined
       cut_frame: False                                  # True: if you need to cut one LiDAR frame into several subframes
@@ -42,13 +42,13 @@ point_lio:
       lidar_type: 1                                     # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR
       scan_line: 4
       timestamp_unit: 3                                 # the unit of time/t field in the PointCloud2 rostopic: 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
-      blind: 0.5
+      blind: 0.4                                        #屏蔽雷达周围一定距离内的点（米）。用于过滤机器人自身产生的点云。如果机器人本体或支架被雷达看到，增大此值。
 
     mapping:
       imu_en: True
       extrinsic_est_en: False                           # for aggressive motion, set this variable False
-      imu_time_inte: 0.005                              # = 1 / frequency of IMU
-      lidar_time_inte: 0.1
+      imu_time_inte: 0.0                              # = 1 / frequency of IMU
+      lidar_time_inte: 0.05                         # = 1 / frequency of LiDAR
       satu_acc: 4.0                                     # the saturation value of IMU's acceleration. not related to the units
       satu_gyro: 35.0                                   # the saturation value of IMU's angular velocity. not related to the units
       acc_norm: 1.0                                     # 1.0 for g as unit, 9.81 for m/s^2 as unit of the IMU's acceleration
@@ -57,8 +57,8 @@ point_lio:
       gyr_cov_output: 1000.0
       b_acc_cov: 0.0001
       b_gyr_cov: 0.0001
-      imu_meas_acc_cov: 0.1
-      imu_meas_omg_cov: 0.1
+      imu_meas_acc_cov: 0.1                             #IMU测量噪声协方差。如果IMU噪声较大、数据跳动厉害，应增大这些值（如0.5），告诉算法不要太相信IMU数据。如果IMU非常精确，可以减小这些值（如0.01）。
+      imu_meas_omg_cov: 0.1                         #IMU测量噪声协方差。如果IMU噪声较大、数据跳动厉害，应增大这些值（如0.5），告诉算法不要太相信IMU数据。如果IMU非常精确，可以减小这些值（如0.01）。
       gyr_cov_input: 0.1                                # for IMU as input model
       acc_cov_input: 0.1                                # for IMU as input model
       plane_thr: 0.1                                    # 0.05, the threshold for plane criteria, the smaller, the flatter a plane
@@ -66,13 +66,13 @@ point_lio:
       ivox_grid_resolution: 0.5
       gravity: [0.030, 0.008, 0.988]            # gravity to be aligned
       gravity_init: [0.030, 0.008, 0.988]       # preknown gravity in the first IMU body frame, use when imu_en is False or start from a non-stationary state
-      extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
+      extrinsic_T: [ -0.011, -0.02329, 0.04412]        #雷达相对于IMU的外参（平移和旋转）。这是最重要的参数之一，必须通过标定精确获取。错误的外参会导致SLAM完全失效或精度极差。
       extrinsic_R: [ 1.0, 0.0, 0.0,
                      0.0, 1.0, 0.0,
                      0.0, 0.0, 1.0 ]
 
     odometry:
-      publish_odometry_without_downsample: True
+      publish_odometry_without_downsample: False
 
     publish:
       path_en: False                                    # False: close the path output
@@ -87,7 +87,7 @@ point_lio:
 
 loam_interface:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     state_estimation_topic: "aft_mapped_to_init"
     registered_scan_topic: "cloud_registered"
     odom_frame: "odom"
@@ -96,16 +96,16 @@ loam_interface:
 
 sensor_scan_generation:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     lidar_frame: "front_mid360"
     base_frame: "base_footprint"
     robot_base_frame: "gimbal_yaw"
 
 terrain_analysis:
   ros__parameters:
-    scanVoxelSize: 0.05                 # 点云下采样
-    decayTime: 5.0                      # 点云时间差阈值 大于则不会被处理
-    noDecayDis: 0.0                     # 点云距离阈值 小于该阈值不考虑时间差
+    scanVoxelSize: 0.05                 #点云下采样的体素大小。增大提高处理速度，减小保留更多地形细节
+    decayTime: 0.5                      # 点云时间差阈值 大于则不会被处理（缩短以加快动态障碍物清除）
+    noDecayDis: 0.0                     # 点云距离阈值 小于该阈值不考虑时间差（设0让所有点都受衰减控制，否则近距离障碍物永远不消失）
     clearingDis: 0.0                    # 该距离外的点会被清除
     useSorting: True                    # 这个参数开起来就能上坡了；如果 use_sorting,那么就以周围点中的分位点作为地面点，否则以最低点作为地面点；周围其余点相对于地面点的高度作为通过代价，所以对于坡面，有的点的代价是正，有的是负，就相互抵消了；不要与 consider_drop 同时开启，计算上会有冲突
     quantileZ: 0.2                      # useful if use_sorting is enabled.
@@ -113,19 +113,19 @@ terrain_analysis:
     limitGroundLift: False
     maxGroundLift: 0.3
     clearDyObs: False                    # 清除动态物体的话，有动态物体走过的地方就走不了了
-    minDyObsDis: 0.3                    # 以下参数都是在 clear_dy_obs 的情况下才有用的
-    minDyObsAngle: 0.0
+    minDyObsDis: 0.5                    # 以下参数都是在 clear_dy_obs 的情况下才有用的
+    minDyObsAngle: 5.0
     minDyObsRelZ: -0.3
-    absDyObsRelZThre: 0.2
+    absDyObsRelZThre: 0.15
     minDyObsVFOV: -28.0
     maxDyObsVFOV: 33.0
-    minDyObsPointNum: 1
+    minDyObsPointNum: 3
     noDataObstacle: False               # treat no data as obstacle
     noDataBlockSkipNum: 0
     minBlockPointNum: 10
     vehicleHeight: 0.5                  # 小于车辆高度的点才会进行处理
     voxelPointUpdateThre: 100
-    voxelTimeUpdateThre: 1.0
+    voxelTimeUpdateThre: 0.5            # 体素重新过滤周期（秒），缩短以加快障碍物清除速度
     minRelZ: -1.5                       # min_rel_z 以及 max_rel_z 限制了有效点云点的Z值范围，用于对天花板和地板进行处理
     maxRelZ: 0.5
     disRatioZ: 0.2                      # Z 值的最大最小范围由这两个值决定，但是并不等于这两个值，是有一个比例关系的，距离机器人越远，限定范围就越大，这其中考虑了坡度
@@ -134,13 +134,13 @@ terrain_analysis_ext:
   ros__parameters:
     scanVoxelSize: 0.1
     decayTime: 0.2
-    noDecayDis: 0.0
-    clearingDis: 20.0
+    noDecayDis: 0.0                     # 设0让所有点都受衰减控制，否则近距离障碍物永远不消失
+    clearingDis: 15.0
     useSorting: true
     quantileZ: 0.2
     vehicleHeight: 1.0
     voxelPointUpdateThre: 100
-    voxelTimeUpdateThre: 2.0
+    voxelTimeUpdateThre: 0.5
     lowerBoundZ: -1.5
     upperBoundZ: 0.5
     disRatioZ: 0.2
@@ -152,23 +152,23 @@ terrain_analysis_ext:
 
 fake_vel_transform:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     odom_topic: "odometry"
     robot_base_frame: "gimbal_yaw"
     fake_robot_base_frame: "gimbal_yaw_fake"
     input_cmd_vel_topic: "cmd_vel_nav2_result"
     output_cmd_vel_topic: "cmd_vel"
     cmd_spin_topic: "cmd_spin"
-    init_spin_speed: 3.14
+    init_spin_speed: 0.0
 
 small_gicp_relocalization:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     num_threads: 4
-    num_neighbors: 20
-    global_leaf_size: 0.1
-    registered_leaf_size: 0.05
-    max_dist_sq: 3.0
+    num_neighbors: 10
+    global_leaf_size: 2.0    # 全局地图下采样的体素大小，增大提高处理速度，减小保留更多地图细节
+    registered_leaf_size: 2.0    # 注册地图下采样的体素大小，增大提高处理速度，减小保留更多地图细节
+    max_dist_sq: 16.0    # 最大匹配距离平方，用于筛选匹配点对。增大提高匹配精度，减小匹配范围
     map_frame: "map"
     odom_frame: "odom"
     base_frame: "base_footprint"
@@ -180,10 +180,10 @@ small_gicp_relocalization:
 
 pointcloud_to_laserscan:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     target_frame: base_footprint
     min_height: -0.5
-    max_height: 6.0
+    max_height: 2.0
     min_intensity: 0.1
     max_intensity: 2.0
     angle_min: -3.1415926                   # -M_PI/2
@@ -221,14 +221,14 @@ slam_toolbox:
     debug_logging: false
     throttle_scans: 1
     scan_queue_size: 10
-    transform_publish_period: 0.0                # if 0 never publishes odometry
+    transform_publish_period: 0.05                # if 0 never publishes odometry
     map_update_interval: 0.5
     resolution: 0.05
     min_laser_range: 0.3                         # for rastering images
     max_laser_range: 10.0                         # for rastering images
     minimum_time_interval: 0.2
-    transform_timeout: 0.2
-    tf_buffer_duration: 10.
+    transform_timeout: 1.0
+    tf_buffer_duration: 30.
     stack_size_to_use: 40000000                   # program needs a larger stack size to serialize large maps
     enable_interactive_mode: true
 
@@ -271,7 +271,7 @@ slam_toolbox:
 
 bt_navigator:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     global_frame: map
     robot_base_frame: gimbal_yaw_fake
     odom_topic: odometry
@@ -331,172 +331,123 @@ bt_navigator:
 
 controller_server:
   ros__parameters:
-    use_sim_time: false
-    odom_topic: odometry
+    use_sim_time: False
     controller_frequency: 20.0
     min_x_velocity_threshold: 0.001
-    min_y_velocity_threshold: 0.5
+    min_y_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3
-    progress_checker_plugins: ["progress_checker"]
-    goal_checker_plugins: ["general_goal_checker"]
+    failure_tolerance: 0.4
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"] # "precise_goal_checker"
     controller_plugins: ["FollowPath"]
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.4
+      required_movement_radius: 0.3 # 最小移动半径，用于判断是否需要重新计算路径
       movement_time_allowance: 10.0
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
+      xy_goal_tolerance: 0.30
       yaw_goal_tolerance: 6.28
     FollowPath:
-      plugin: "pb_omni_pid_pursuit_controller::OmniPidPursuitController"
-      translation_kp: 0.8
-      translation_ki: 0.1
-      translation_kd: 0.3
-      enable_rotation: false
-      rotation_kp: 3.0
-      rotation_ki: 0.1
-      rotation_kd: 0.3
-      transform_tolerance: 0.1
-      min_max_sum_error: 1.0
-      lookahead_dist: 0.6
-      use_velocity_scaled_lookahead_dist: true
-      lookahead_time: 0.5
-      min_lookahead_dist: 0.5
-      max_lookahead_dist: 1.0
-      use_interpolation: false
-      use_rotate_to_heading: false
-      use_rotate_to_heading_treshold: 0.1
-      min_approach_linear_velocity: 0.3
-      approach_velocity_scaling_dist: 1.8
-      v_linear_min: -1.0
-      v_linear_max: 1.0
-      v_angular_min: -1.2
-      v_angular_max: 1.2
-      curvature_min: 0.4                                # 低曲率阈值，低于此值不减速。
-      curvature_max: 0.7                                # 高曲率阈值，高于此值大幅减速。
-      reduction_ratio_at_high_curvature: 0.5            # 高曲率时的速度降低比例。 0.5 (即减速 50%)
-      curvature_forward_dist: 0.7                       # 前向距离，用于曲率计算
-      curvature_backward_dist: 0.3                      # 后向距离，用于曲率计算
-      max_velocity_scaling_factor_rate: 0.6             # 速度缩放因子的最大变化率
-# controller_server:
-#   ros__parameters:
-#     use_sim_time: False
-#     controller_frequency: 20.0
-#     min_x_velocity_threshold: 0.001
-#     min_y_velocity_threshold: 0.001
-#     min_theta_velocity_threshold: 0.001
-#     failure_tolerance: 0.4
-#     progress_checker_plugin: "progress_checker"
-#     goal_checker_plugins: ["general_goal_checker"] # "precise_goal_checker"
-#     controller_plugins: ["FollowPath"]
-#     progress_checker:
-#       plugin: "nav2_controller::SimpleProgressChecker"
-#       required_movement_radius: 0.3 # 最小移动半径，用于判断是否需要重新计算路径
-#       movement_time_allowance: 10.0
-#     general_goal_checker:
-#       stateful: True
-#       plugin: "nav2_controller::SimpleGoalChecker"
-#       xy_goal_tolerance: 0.15
-#       yaw_goal_tolerance: 6.28
-#     FollowPath:
-#       plugin: "nav2_mppi_controller::MPPIController"
-#       time_steps: 40 #是指在每个控制周期内，控制器将生成的轨迹点数。
-#       model_dt: 0.05  #是指控制器的时间步长，值越小，控制器越精确，但计算量也越大。
-#       batch_size: 800 #控制器的采样数。
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 40 #是指在每个控制周期内，控制器将生成的轨迹点数。
+      model_dt: 0.05  #是指控制器的时间步长，值越小，控制器越精确，但计算量也越大。
+      batch_size: 800 #控制器的采样数。
 
-#       vx_std: 0.05 #控制器的线速度标准差, 用于生成随机噪声。复杂环境下，可以适当增大。
-#       vy_std: 0.05 #控制器的侧向速度标准差, 用于生成随机噪声。复杂环境下，可以适当增大。
-#       wz_std: 0.01
-#       vx_max: 0.4 #控制器的线速度最大值。
-#       vx_min: -0.4 #控制器的线速度最小值。
-#       vy_max: 0.4 #控制器的侧向速度最大值。
-#       wz_max: 0.0 #控制器的角速度最大值。
+      vx_std: 0.30 #控制器的线速度标准差, 用于生成随机噪声。复杂环境下，可以适当增大。
+      vy_std: 0.30 #控制器的侧向速度标准差, 用于生成随机噪声。复杂环境下，可以适当增大。
+      wz_std: 0.01
+      vx_max: 3.0 #控制器的线速度最大值。
+      vx_min: -3.0 #控制器的线速度最小值。
+      vy_max: 3.0 #控制器的侧向速度最大值。
+      wz_max: 0.0 #控制器的角速度最大值。
 
-#       ax_max: 0.6 #控制器的线加速度最大值。
-#       ax_min: -0.6 #控制器的线加速度最小值。
-#       ay_max: 0.6 #控制器的侧向加速度最大值。
-#       ay_min: -0.6 #控制器的侧向加速度最小值.
-#       az_max: 3.0 #控制器的角加速度最大值。
+      ax_max: 4.0 #控制器的线加速度最大值。
+      ax_min: -4.0 #控制器的线加速度最小值。
+      ay_max: 4.0 #控制器的侧向加速度最大值。
+      ay_min: -4.0 #控制器的侧向加速度最小值.
+      az_max: 4.0 #控制器的角加速度最大值。
 
-#       iteration_count: 2 #控制器的迭代次数。
-#       prune_distance: 2.0 #控制器的轨迹剪枝距离。
-#       transform_tolerance: 0.4 #控制器的变换容忍度, 用于判断是否需要重新计算轨迹，值越大，越容易重新计算。
-#       temperature: 0.2 #控制器的温度。0.6是一个常用的值，用于控制控制器的探索能力。
-#       gamma: 0.015 #控制器的 gamma 值,
-#       motion_model: "Omni" #控制器的运动模型。
-#       visualize: false #是否可视化。
-#       reset_period: 0.1 # (only in Humble)
-#       retry_attempt_limit: 1 #软重置的尝试次数
-#       regenerate_noises: true
+      iteration_count: 2 #控制器的迭代次数。
+      prune_distance: 2.0 #控制器的轨迹剪枝距离。
+      transform_tolerance: 0.4 #控制器的变换容忍度, 用于判断是否需要重新计算轨迹，值越大，越容易重新计算。
+      temperature: 0.6 #控制器的温度。0.6是一个常用的值，用于控制控制器的探索能力。
+      gamma: 0.015 #控制器的 gamma 值,
+      motion_model: "Omni" #控制器的运动模型。
+      visualize: true #是否可视化。
+      reset_period: 0.1 # (only in Humble)
+      retry_attempt_limit: 1 #软重置的尝试次数
+      regenerate_noises: true
 
-#       TrajectoryVisualizer:
-#         trajectory_step: 10 #是指在可视化轨迹时，每隔多少个轨迹点绘制一个点。
-#         time_step: 5 #是指在可视化轨迹时，每隔多少个时间步长绘制一个点。
+      TrajectoryVisualizer:
+        trajectory_step: 10 #是指在可视化轨迹时，每隔多少个轨迹点绘制一个点。
+        time_step: 5 #是指在可视化轨迹时，每隔多少个时间步长绘制一个点。
 
-#       AckermannConstraints:
-#         min_turning_r: 0.35
-#       critics: [ "ConstraintCritic", "CostCritic", "GoalCritic",  
-#            "PathAlignCritic", "PathFollowCritic","PreferForwardCritic" , "ObstaclesCritic"]
+      AckermannConstraints:
+        min_turning_r: 0.35
+      critics: [ "ConstraintCritic", "CostCritic", "GoalCritic",  
+           "PathAlignCritic", "PathFollowCritic","PreferForwardCritic" , "ObstaclesCritic"]
       
-#       ConstraintCritic:
-#         enabled: true
-#         cost_power: 1
-#         cost_weight: 30.0 # 约束代价权重，提高会更关注约束,增大会导致路径更平滑
+      ConstraintCritic: #交警，管你速度的
+        enabled: true
+        cost_power: 1
+        cost_weight: 50.0 # 约束代价权重，提高会更关注约束,增大会导致路径更平滑
       
-#       GoalCritic:
-#         enabled: true
-#         cost_power: 1
-#         cost_weight: 100.0 # 代价权重，提高会更关注目标,增大利于终点刹车
-#         threshold_to_consider: 2.0 # 考虑的阈值,和速度有关，值越大，速度越慢
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0 # 代价权重，提高会更关注目标,增大更加迫切到终点，减小就对终点权重小了
+        threshold_to_consider: 1.0 # 阈值内开始work
       
 
-#       PreferForwardCritic:
-#         enabled: false #启用前向偏好代价
-#         cost_power: 1
-#         cost_weight: 5.0  # 给 10.0 意味着：优先走直线，但如果必须转弯或倒车，也能接受。越大，越优先走直线
-#         threshold_to_consider: 0.5    # 考虑的阈值,和速度有关，值越大，速度越慢
+      ObstaclesCritic: #障碍物
+        enabled: true
+        cost_power: 1
+        repulsion_weight: 2.0    # 推斥权重，数值越大越倾向于避开障碍物
+        critical_weight: 5.0     # 关键权重，进入区域后加倍惩罚
+        consider_footprint: true    # 是否考虑机器人外形轮廓
+        collision_cost: 7000.0    # 碰撞代价，数值越大越避免碰撞
+        collision_margin_distance: 0.15   # 实际车再多加一圈的距离
+        near_goal_distance: 2.0  # 阈值以外正常工作，阈值内狠狠降低自己的效果，相当于允许近距离靠墙边停车
+        inflation_radius: 0.4 # (only in Humble)
+        cost_scaling_factor: 10.0 # (only in Humble)
       
-#       ObstaclesCritic: #障碍物
-#         enabled: true
-#         cost_power: 1
-#         repulsion_weight: 4.0    # 推斥权重，数值越大越倾向于避开障碍物
-#         critical_weight: 7.0     # 关键权重，影响障碍物附近的反应强度
-#         consider_footprint: true    # 是否考虑机器人外形轮廓
-#         collision_cost: 7000.0    # 碰撞代价，数值越大越避免碰撞
-#         collision_margin_distance: 0.5   # 碰撞安全边距，单位米
-#         near_goal_distance: 2.0  # 距离目标的距离,更改这个值会影响到达目标的速度，值越大，速度越慢
-#         inflation_radius: 0.5 # (only in Humble)
-#         cost_scaling_factor: 4.0 # (only in Humble)
-      
-#       CostCritic: #代价，用于计算代价，代价越大，越不容易选择
-#         enabled: true
-#         cost_power: 1
-#         cost_weight: 3.81
-#         critical_cost: 50.0 #临界代价，用于判断是否发生碰撞
-#         consider_footprint: true
-#         collision_cost: 1000000.0 #碰撞代价
-#         near_goal_distance: 1.0  #距离目标的距离,更改这个值会影响到达目标的速度，值越大，速度越慢
-#         trajectory_point_step: 2 #轨迹点步长
-      
-#       PathAlignCritic: #路径对齐
-#         enabled: true
-#         cost_power: 1
-#         cost_weight: 15.0 # 代价权重，提高更爱寻迹
-#         max_path_occupancy_ratio: 0.5    # 最大路径占用比，用于判断路径是否被占用，越高，越容易选择
-#         trajectory_point_step: 1 #轨迹点步长
-#         threshold_to_consider: 0.5 # 考虑的阈值
-#         offset_from_furthest: 20
-#         use_path_orientations: false #是否使用路径方向
-      
-#       PathFollowCritic: #是否跟随路径
-#         enabled: true
-#         cost_power: 1
-#         cost_weight: 8.0 # 代价权重 越大，越关注路径跟随
-#         offset_from_furthest: 3 # 距离最远点的偏移量，越大，越关注路径跟随，越小，越关注路径方向
-#         threshold_to_consider: 0.4 # 考虑的阈值
+      CostCritic: #代价，用于计算代价，代价越大，越不容易选择
+        enabled: true
+        cost_power: 1
+        cost_weight: 8.0    #3.81中小数值，增大就更讨厌代价高的路径
+        critical_cost: 50.0 #临界代价，路径代价高于该参数就不选这个路了
+        consider_footprint: true
+        collision_cost: 1000000.0 #碰撞代价
+        near_goal_distance: 1.0  #于这个距离就允许贴近障碍物，设太大在离终点很远处就开始减速
+        trajectory_point_step: 2 #轨迹点步长，写1就是每个点都查，计算量大精度高，写4就是4个点查一个。
+
+      PathFollowCritic: #是否跟随路径
+        enabled: true
+        cost_power: 1
+        cost_weight: 8.0 # 代价权重 越大，越关注路径跟随
+        offset_from_furthest: 5 # 3小20大 。小则咬的死咬得死但容易跟着路径震荡。大则注意远方，容易转弯切内道
+        threshold_to_consider: 0.4 # 小于阈值就不干活了，交给目标批评者
+
+
+
+      PathAlignCritic: #路径对齐 方向盘
+        enabled: false
+        cost_power: 1
+        cost_weight: 35.0 # 代价权重，提高更爱寻迹，15已经算非常大了
+        max_path_occupancy_ratio: 0.5    # 大路径占用比，预测的路径穿过了障碍物或者不可行区域的比例超过该参数，可能就会降低对齐的要求或者放弃这条轨迹
+        trajectory_point_step: 1 #轨迹点步长，写1就是每个点都查，计算量大精度高，写4就是4个点查一个。
+        threshold_to_consider: 0.5 # 小于阈值就不考虑头朝哪里了
+        offset_from_furthest: 20    #前瞻距离，单位米，大则会提前预判拐弯，小则反应更快但容易抖动，都是为了方便车头对齐路径的
+        use_path_orientations: false #是否使用路径方向
+
+      PreferForwardCritic:
+        enabled: false #启用前向偏好代价
+        cost_power: 1
+        cost_weight: 5.0  # 给 10.0 意味着：优先走直线，但如果必须转弯或倒车，也能接受。越大，越优先走直线
+        threshold_to_consider: 0.5    # 考虑的阈值,和速度有关，值越大，速度越慢
+
       
 
       # VelocityDeadbandCritic: #速度死区
@@ -512,17 +463,18 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      use_sim_time: true
-      update_frequency: 10.0
-      publish_frequency: 10.0
+      use_sim_time: False
+      transform_tolerance: 1.0
+      update_frequency: 5.0
+      publish_frequency: 5.0
       global_frame: odom
       robot_base_frame: gimbal_yaw_fake
       rolling_window: true
-      width: 5
-      height: 5
+      width: 6
+      height: 6
       resolution: 0.05
-      robot_radius: 0.35
-      plugins: ["static_layer", "inflation_layer"]
+      footprint: "[ [0.2, 0.2], [0.2, -0.2], [-0.2, -0.2], [-0.2, 0.2] ]" 
+      plugins: ["static_layer", "intensity_voxel_layer", "inflation_layer"]
       intensity_voxel_layer:
         plugin: pb_nav2_costmap_2d::IntensityVoxelLayer
         enabled: true
@@ -530,7 +482,7 @@ local_costmap:
         footprint_clearing_enabled: true
         publish_voxel_map: false
         combination_method: 1
-        mark_threshold: 0
+        mark_threshold: 0    # 强度阈值，低于此值的点云不被认为是障碍物
         origin_z: 0.0
         unknown_threshold: 5
         z_resolution: 0.05
@@ -555,22 +507,22 @@ local_costmap:
         map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 1.35
+        cost_scaling_factor: 4.0
+        inflation_radius: 1.0
       always_send_full_costmap: False
 
 global_costmap:
   global_costmap:
     ros__parameters:
-      use_sim_time: true
-      update_frequency: 5.0
-      publish_frequency: 2.0
+      use_sim_time: False
+      transform_tolerance: 1.0
+      update_frequency: 1.0
+      publish_frequency: 1.0
       global_frame: map
       robot_base_frame: gimbal_yaw_fake
-      robot_radius: 0.35
-      resolution: 0.05
-      track_unknown_space: true
-      plugins: ["static_layer", "inflation_layer"]
+      footprint: "[ [0.2, 0.2], [0.2, -0.2], [-0.2, -0.2], [-0.2, 0.2] ]" 
+      resolution: 0.05 # 地图分辨率0.05米/像素（5cm）
+      plugins: ["static_layer", "intensity_voxel_layer", "inflation_layer"]
       intensity_voxel_layer:
         plugin: pb_nav2_costmap_2d::IntensityVoxelLayer
         enabled: true
@@ -578,15 +530,15 @@ global_costmap:
         footprint_clearing_enabled: true
         publish_voxel_map: false
         combination_method: 1
-        mark_threshold: 0
+        mark_threshold: 2  # 增加标记阈值，减少噪声点被标记为障碍物
         origin_z: 0.0
         unknown_threshold: 5
         z_resolution: 0.05
         z_voxels: 16
-        min_obstacle_height: 0.0
-        max_obstacle_height: 2.0
-        min_obstacle_intensity: 0.1
-        max_obstacle_intensity: 2.0
+        min_obstacle_height: 0.2  # 提高最小障碍高度，过滤地面噪声
+        max_obstacle_height: 1.8  # 略微降低最大障碍高度，聚焦人体检测
+        min_obstacle_intensity: 0.5  # 提高最小强度阈值，过滤弱反射噪声
+        max_obstacle_intensity: 1.5  # 降低最大强度阈值，避免动态物体过强反射
         observation_sources: terrain_map_ext
         terrain_map_ext:
           data_type: PointCloud2
@@ -594,17 +546,19 @@ global_costmap:
           # It doesn't need to start with '/'
           topic: <robot_namespace>/terrain_map_ext
           sensor_frame: front_mid360
-          min_obstacle_height: 0.0
-          max_obstacle_height: 2.0
-          obstacle_max_range: 10.0
-          obstacle_min_range: 0.2
+          min_obstacle_height: 0.2   # 提高最小障碍高度
+          max_obstacle_height: 1.8   # 降低最大障碍高度
+          obstacle_max_range: 5.0   # 缩短最大检测范围，减少远处噪声
+          obstacle_min_range: 0.3   # 略微增加最小检测范围
+          voxel_decay: 20.0         # 添加体素衰减参数，快速衰减动态物体的影响
+          decay_acceleration: 2.0   # 衰减加速参数
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 1.35
+        cost_scaling_factor: 4.0        # 增大，代价衰减更快
+        inflation_radius: 1.0       # 减小，膨胀区域更小
       always_send_full_costmap: False
 
 # The yaml_filename does not need to be specified since it going to be set by defaults in launch.
@@ -616,82 +570,57 @@ map_server:
 
 map_saver:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     save_map_timeout: 5.0
     free_thresh_default: 0.25
     occupied_thresh_default: 0.65
     map_subscribe_transient_local: True
 
-planner_server:
+planner_server: #规划服务器
   ros__parameters:
-    use_sim_time: false
-    expected_planner_frequency: 10.0
+    use_sim_time: False
+    expected_planner_frequency: 1.0
     planner_plugins: ["GridBased"]
     GridBased:
-      plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 0.5                      # 如果无法到达精确位置的规划容差，单位：米
-      allow_unknown: true                 # 允许在未知空间中行驶
-      downsample_costmap: false           # 是否对地图进行下采样
-      downsampling_factor: 1              # 代价地图层分辨率的倍数 (e.g. 2 on a 5cm costmap would be 10cm)
-      max_iterations: 1000000             # 搜索的最大总迭代次数（如果无法到达），设置为-1以禁用
-      max_on_approach_iterations: 1000    # 一旦在容差范围内，尝试到达目标的最大迭代次数
-      max_planning_time: 3.5              # 规划、平滑和上采样的最大时间（秒）。将根据规划后的剩余时间缩放最大平滑和上采样时间。
-      cost_travel_multiplier: 2.0         # For 2D: 应用于搜索的代价乘数，以避开高代价区域。较大的值将更精确地放置在通道的中心（如果存在非“FREE”代价势场），但计算时间稍长。为了优化速度，1.0是合理的值。合理的折衷值是2.0。0.0的值有效地禁用避开障碍物的功能，像一个简单的二进制搜索A*。
-      motion_model_for_search: "DUBIN"    # For Hybrid Dubin, Redds-Shepp
-      angle_quantization_bins: 64         # For Hybrid nodes: 搜索的角度桶数，对于2D节点必须为1（无角度搜索）
-      analytic_expansion_ratio: 3.5       # For Hybrid/Lattice nodes: 在搜索过程中尝试解析扩展的比例，用于最终接近。
-      analytic_expansion_max_length: 3.0  # For Hybrid/Lattice nodes: 解析扩展被认为有效的最大长度，以防止不安全的捷径（单位：米）。这应该与最小转弯半径成比例，不应小于最小半径的4-5倍。
-      minimum_turning_radius: 0.05        # For Hybrid/Lattice nodes: 路径/车辆的最小转弯半径，单位：米
-      retrospective_penalty: 0.025        # For Hybrid/Lattice nodes: 优先考虑路径上较晚的机动而不是较早的机动。节省搜索时间，因为较早的节点不会被扩展，直到有必要。必须 >= 0.0且 <= 1.0
-      reverse_penalty: 1.0                # For Reeds-Shepp model: 应用于倒车的惩罚，必须 >= 1
-      change_penalty: 0.0                 # For Hybrid nodes: 应用于改变方向的惩罚，必须 >= 0
-      non_straight_penalty: 2.20          # For Hybrid nodes: 应用于非直线运动的惩罚，必须 >= 1
-      cost_penalty: 3.0                   # For Hybrid nodes: 在将更高代价区域添加到障碍物地图动态规划距离扩展启发式时应用的惩罚。这将驱动机器人更靠近通道的中心。1.3 - 3.5 之间的值是合理的。
-      rotation_penalty: 5.0               # For Lattice node: 仅在使用包含原地旋转原语的最小控制集时应用于纯原地旋转命令的惩罚。除非严格必要用于避开障碍物，否则应始终设置足够高的权重，以避免此操作，否则可能会在路径中频繁出现不连续的情况，要求机器人原地旋转以节省路径距离。
-      lookup_table_size: 20.0             # For Hybrid nodes: 缓存的dubin/reeds-sheep距离窗口的大小，单位：米。
-      cache_obstacle_heuristic: True      # For Hybrid nodes: 在同一目标位置的后续重新规划之间缓存障碍物地图动态规划距离扩展启发式。如果代价地图基本静态，则显著加快重新规划性能（40倍）。
-      allow_reverse_expansion: False      # For Lattice node: 是否在前向原语或反向扩展状态格子图中扩展，将使每一步的分支因子加倍。
-      smooth_path: True                   # For Lattice/Hybrid nodes: 是否平滑路径，对于2D节点始终为 true。
-      smoother:
-        max_iterations: 1000
-        w_smooth: 0.3
-        w_data: 0.2
-        tolerance: 1.0e-10
-        do_refinement: true
+      plugin: "nav2_theta_star_planner/ThetaStarPlanner" # In Iron and older versions, "/" was used instead of "::"
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      w_traversal_cost: 2.0    # 遍历成本权重。 增大该值（如从2.0→10.0）：# 规划器会更倾向于选择遍历成本更低的路径# 路径会更远离障碍物和危险区域# 可能导致路径更长，但更安全# 减小该值（如从2.0→0.5）：# 规划器会更注重距离最短而非遍历安全# 路径可能更靠近障碍物或危险区域# 可能导致路径更短，但安全性降低
+      w_heuristic_cost: 1.0
 
-smoother_server:
+smoother_server: #路径平滑服务器
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     smoother_plugins: ["simple_smoother"]
     simple_smoother:
       plugin: "nav2_smoother::SimpleSmoother"
       tolerance: 1.0e-10
-      max_its: 1000
+      max_its: 2000
       do_refinement: True
 
-behavior_server:
+behavior_server:    #行为服务器
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     local_costmap_topic: local_costmap/costmap_raw
     global_costmap_topic: global_costmap/costmap_raw
     local_footprint_topic: local_costmap/published_footprint
     global_footprint_topic: global_costmap/published_footprint
     cycle_frequency: 10.0
     behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait"]
-    spin:
+    spin: #旋转
       plugin: "nav2_behaviors/Spin"
-    backup:
-      plugin: "pb_nav2_behaviors/BackUpFreeSpace"
-    drive_on_heading:
+    backup: #后退
+      plugin: "nav2_behaviors/BackUp"
+    drive_on_heading: #定向移动
       plugin: "nav2_behaviors/DriveOnHeading"
-    wait:
+    wait: #等待
       plugin: "nav2_behaviors/Wait"
-    assisted_teleop:
+    assisted_teleop: #辅助遥控
       plugin: "nav2_behaviors/AssistedTeleop"
     local_frame: odom
     global_frame: map
     robot_base_frame: gimbal_yaw_fake
-    transform_tolerance: 0.1
+    transform_tolerance: 2.0 
     simulate_ahead_time: 2.0
     max_rotational_vel: 1.0
     min_rotational_vel: 0.4
@@ -701,35 +630,35 @@ behavior_server:
     max_radius: 2.0
     visualize: false
 
-waypoint_follower:
+waypoint_follower:    #路径点跟随器
   ros__parameters:
-    use_sim_time: false
-    loop_rate: 20
-    stop_on_failure: false
+    use_sim_time: False
+    loop_rate: 10
+    stop_on_failure: false    # 任务失败时不停止，继续执行下一个点
     waypoint_task_executor_plugin: "wait_at_waypoint"
     wait_at_waypoint:
       plugin: "nav2_waypoint_follower::WaitAtWaypoint"
-      enabled: True
-      waypoint_pause_duration: 200
+      enabled: True    # 启用此功能
+      waypoint_pause_duration: 50     # 在每个路径点暂停50毫秒
 
-velocity_smoother:
+velocity_smoother:    #速度平滑器
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     smoothing_frequency: 20.0
-    scale_velocities: False
+    scale_velocities: False    # 不缩放速度（保持原始输入）
     feedback: "OPEN_LOOP"
-    max_velocity: [2.5, 2.5, 3.0]
-    min_velocity: [-2.5, -2.5, -3.0]
-    max_accel: [0.5, 0.5, 1.0]
-    max_decel: [-0.6, -0.6, -1.0]
+    max_velocity: [3.0, 3.0, 1.0]    #最大X、Y、旋转
+    min_velocity: [-3.0, -3.0, -2.0]    #最小X、Y、旋转 
+    max_accel: [4.0, 4.0, 4.0]    #最大加速度XY旋转
+    max_decel: [-4.0, -4.0, -3.0]    #最小加速度XY旋转
     odom_topic: "odometry"
-    odom_duration: 0.1
-    deadband_velocity: [0.0, 0.0, 0.0]
-    velocity_timeout: 1.0
+    odom_duration: 0.1    # 里程计数据有效期0.1秒
+    deadband_velocity: [0.0, 0.0, 0.0]    # 死区速度：无死区（立即响应）
+    velocity_timeout: 1.0     # 速度指令超时时间1.0秒
 
-pb_teleop_twist_joy_node:
+pb_teleop_twist_joy_node: #手柄控制
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: False
     robot_base_frame: gimbal_yaw
     control_mode: auto_control    # Option: auto_control, manual_control
 
@@ -762,3 +691,60 @@ pb_teleop_twist_joy_node:
       roll: 0.0
       pitch: -1.5
       yaw: 3.5
+
+# controller_server:
+#   ros__parameters:
+#     use_sim_time: False
+#     odom_topic: odometry
+#     controller_frequency: 7.0    # 控制器频率
+#     patience: 3.0
+#     min_x_velocity_threshold: 0.001
+#     min_y_velocity_threshold: 0.001
+#     min_theta_velocity_threshold: 0.001
+#     failure_tolerance: 0.6    # 失败容忍度，用于判断是否需要重新计算路径
+#     progress_checker_plugins: ["progress_checker"] # 进度检查器插件
+#     goal_checker_plugins: ["general_goal_checker"] # 目标检查器插件
+#     controller_plugins: ["FollowPath"] # 控制器插件
+
+#     progress_checker:
+#       plugin: "nav2_controller::SimpleProgressChecker"
+#       required_movement_radius: 0.5
+#       movement_time_allowance: 10.0
+
+#     general_goal_checker:
+#       stateful: True
+#       plugin: "nav2_controller::SimpleGoalChecker"
+#       xy_goal_tolerance: 0.30
+#       yaw_goal_tolerance: 6.28
+      
+#     FollowPath:
+#       plugin: "pb_omni_pid_pursuit_controller::OmniPidPursuitController"
+#       translation_kp: 2.0
+#       translation_ki: 0.1
+#       translation_kd: 2.0
+#       enable_rotation: false
+#       rotation_kp: 3.0
+#       rotation_ki: 0.1
+#       rotation_kd: 1.0
+#       transform_tolerance: 1.0 # 变换容忍度，用于判断是否需要重新计算路径
+#       min_max_sum_error: 0.5
+#       lookahead_dist: 1.0
+#       use_velocity_scaled_lookahead_dist: true
+#       lookahead_time: 0.5
+#       min_lookahead_dist: 0.3    # 最小前瞻距离
+#       max_lookahead_dist: 0.5
+#       use_interpolation: false
+#       use_rotate_to_heading: false
+#       use_rotate_to_heading_treshold: 0.1
+#       min_approach_linear_velocity: 0.05    
+#       approach_velocity_scaling_dist: 2.0
+#       v_linear_min: -2.0                   #最大线速度
+#       v_linear_max: 2.0                    #最大线速度
+#       v_angular_min: -4.0
+#       v_angular_max: 4.0
+#       curvature_min: 0.3                                # 低曲率阈值，低于此值不减速。
+#       curvature_max: 0.6                                # 高曲率阈值，高于此值大幅减速。
+#       reduction_ratio_at_high_curvature: 0.7            # 高曲率时的速度降低比例。 0.5 (即减速 50%)
+#       curvature_forward_dist: 1.0                       # 前向距离，用于曲率计算
+#       curvature_backward_dist: 0.5                      # 后向距离，用于曲率计算
+#       max_velocity_scaling_factor_rate: 0.9             # 速度缩放因子的最大变化率

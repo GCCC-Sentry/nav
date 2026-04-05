@@ -1,0 +1,67 @@
+# ============================================================
+# pursuit_decision 追击决策节点参数配置
+# ============================================================
+# RMUC 2026 哨兵追击系统
+# 注意: 区域坐标需要根据你的实际地图(map frame)进行校准！
+# ============================================================
+
+pursuit_decision:
+  ros__parameters:
+
+    # ====== 追击触发条件 ======
+    trigger_distance: 5.0          # 自瞄检测到目标后, 仅在此距离内考虑追击 (m)
+    confirm_frames: 10             # 连续10帧确认同一目标后才追击
+    confirm_timeout: 2.0           # 确认窗口时间上限 (s), 10帧必须在2s内完成
+
+    # ====== 追击行为 ======
+    goal_update_rate: 5.0          # 追击时导航目标更新频率 (Hz)
+    max_pursuit_duration: 15.0     # 单次追击最大时长 (s), 超时自动撤退
+    target_lost_timeout: 3.0       # 目标丢失超时 (s), 超时结束追击
+
+    # ====== 逼近距离 (按目标类型) ======
+    # 不同兵种危险程度不同, 逼近距离应不同
+    approach_distance:
+      hero: 4.0                    # 英雄 (高火力, 保持距离)
+      engineer: 3.0                # 工程
+      infantry: 2.5               # 步兵 (标准目标)
+      sentry: 3.5                  # 对方哨兵
+      default: 3.0                # 其他/默认
+
+    # ====== 撤退条件 ======
+    hp_retreat_threshold: 150.0    # 血量低于此值立即撤退
+
+    # ====== 安全撤退点 (己方半场, map frame) ======
+    # 根据实际地图调整！
+    retreat_x: 2.0
+    retreat_y: 0.0
+    retreat_yaw: 0.0
+
+    # ====== 坐标系配置 ======
+    # 自瞄运行在宿主机, 导航(含pursuit)运行在Docker容器
+    # 两者通过 --network host 的ROS2 DDS通信
+    # 自瞄发布的是IMU世界坐标系下的相对向量(xyz_in_world)
+    # 不依赖动态云台TF, 仅需一个静态yaw偏移量即可转换到map frame
+
+    map_frame_id: "map"            # 导航全局坐标系
+    robot_frame_id: "chassis"      # 机器人底盘坐标系
+
+    # IMU世界坐标系 → map坐标系 的yaw偏移量 (rad)
+    # 两者共享重力方向(z轴), 仅差一个绕Z轴的旋转
+    # 标定方法: 将机器人放在已知位置, offset = map_yaw - imu_world_yaw
+    # 如果Point-LIO定位系统使用IMU作为方向参考, 此值通常接近0
+    world_to_map_yaw_offset: 0.0
+
+    transform_tolerance: 0.5       # TF查询超时 (s)
+
+    # ====== PnP噪声控制 ======
+    # 旋转目标PnP解算可能有20-30cm误差, 需要滤波
+    pnp_noise_threshold: 0.5       # 位置标准差阈值 (m), 超过则认为目标不稳定
+    max_position_jump: 1.5         # 最大帧间跳变 (m), 超过则丢弃该帧
+
+    # ====== 图层/地形 ======
+    z_layer_tolerance: 0.3         # Z值图层判断容差 (m)
+    enable_zone_check: false       # 启用区域/图层检查 (测试阶段设false, 正式比赛设true并校准区域坐标)
+
+    # ====== 代价地图 ======
+    costmap_cost_threshold: 50     # 低于此代价值的栅格才可通行
+    num_candidate_sectors: 36      # 圆形候选点数量 (每10度一个)

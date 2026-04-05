@@ -1,0 +1,117 @@
+# ============================================================
+# PB2025 哨兵追击节点配置文件
+# ============================================================
+# 使用方式:
+#   ros2 launch pb2025_sentry_pursuit pursuit_launch.py
+#   或通过参数覆盖:
+#   ros2 launch pb2025_sentry_pursuit pursuit_launch.py optimal_attack_range:=2.5
+# ============================================================
+
+sentry_pursuit_node:
+  ros__parameters:
+
+    # ==================== 追击距离参数 ====================
+    # optimal_attack_range: 最佳攻击距离 (m), 追击时保持此距离
+    # min_attack_range: 最小距离, 低于此距离不再前进
+    # max_attack_range: 最大距离, 超过此距离开始追击
+    optimal_attack_range: 3.0
+    min_attack_range: 1.5
+    max_attack_range: 5.0
+
+    # ==================== 控制参数 ====================
+    # control_rate: 主控制循环频率 (Hz)
+    control_rate: 10.0
+
+    # goal_update_min_interval: 导航目标更新最小间隔 (s)
+    #   避免过于频繁地发送导航目标
+    goal_update_min_interval: 0.5
+
+    # target_lost_timeout: 目标丢失超时 (s)
+    #   超过此时间未收到目标信息则认为目标丢失
+    target_lost_timeout: 2.0
+
+    # position_ema_alpha: 位置平滑系数 (0~1)
+    #   0=完全不更新, 1=不平滑, 推荐 0.2~0.5
+    position_ema_alpha: 0.3
+
+    # goal_reach_tolerance: 到达目标容差 (m)
+    goal_reach_tolerance: 0.3
+
+    # ==================== 坐标系参数 ====================
+    # gimbal_frame: SP视觉云台坐标系 (TF frame)
+    #   对应 sp_vision 发布的目标位置坐标系
+    gimbal_frame: "gimbal_link"
+
+    # map_frame: 导航地图坐标系
+    map_frame: "map"
+
+    # base_frame: 机器人底盘坐标系
+    base_frame: "base_link"
+
+    # ==================== 追击使能 ====================
+    # 初始是否启用追击功能 (可通过 pursuit/enable 话题动态切换)
+    pursuit_enabled: true
+
+    # ==================== 不追击的车辆 ID ====================
+    # 装甲板 ID 定义 (与 SP 视觉通信协议对应):
+    #   1: Hero (英雄)
+    #   2: Engineer (工程)
+    #   3: Infantry3 (步兵3号)
+    #   4: Infantry4 (步兵4号)
+    #   5: Infantry5 (步兵5号)
+    #   6: Outpost (前哨站)
+    #   7: Sentry (哨兵)
+    #   8: Base (基地)
+    #
+    # 示例: [6, 8] 表示不追击前哨站和基地 (固定建筑物无需追击)
+    excluded_vehicles: [6, 8]
+
+    # ==================== 禁区配置 ====================
+    # 禁区定义方式:
+    #   1. 在 forbidden_zones_names 中列出禁区名称
+    #   2. 为每个禁区创建 zone_<name> 参数, 值为顶点坐标的扁平列表
+    #      格式: [x1, y1, x2, y2, x3, y3, ...]  (至少 3 个顶点)
+    #
+    # 注意: 禁区坐标使用 *地图坐标系* (map frame)
+    #
+    # RoboMaster 场地参考 (RMUL 2025):
+    #   场地尺寸约 15m x 8m
+    #   坐标原点通常在场地左下角
+
+    forbidden_zones_names:
+      - "our_base"
+      - "supply_area"
+      - "enemy_base_zone"
+
+    # 我方基地保护区 (不追入敌方的基地区域)
+    zone_our_base:
+      - 0.0
+      - -4.5
+      - 1.5
+      - -4.5
+      - 1.5
+      - -3.0
+      - 0.0
+      - -3.0
+
+    # 补给区 (补给时不应追击)
+    zone_supply_area:
+      - 7.0
+      - -4.5
+      - 8.5
+      - -4.5
+      - 8.5
+      - -3.0
+      - 7.0
+      - -3.0
+
+    # 敌方基地禁区 (进入可能被基地攻击)
+    zone_enemy_base_zone:
+      - 13.0
+      - -4.5
+      - 15.0
+      - -4.5
+      - 15.0
+      - -3.0
+      - 13.0
+      - -3.0

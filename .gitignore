@@ -29,6 +29,18 @@ rosbag2_*/
 *.log
 *.tmp
 
+# 大型日志文件
+robot_status_log.txt
+
 # Core dump 文件
 core
 core.*
+
+# 大型压缩文件和临时记录
+*.zip
+ros_ws/123
+ros_ws/20260327nav
+ros_ws/260330
+ros_ws/mppi
+ros_ws/frames_*.gv
+ros_ws/frames_*.pdf

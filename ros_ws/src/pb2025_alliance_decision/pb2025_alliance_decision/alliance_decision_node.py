@@ -46,11 +46,11 @@ class State:
 #  坐标点 (来自 rmul_2026_patrol.xml)
 # ═══════════════════════════════════════
 PATROL_POINTS = [
-    {"name": "巡逻点1", "x": -2.02, "y": -5.16, "yaw": 0.00},
-    {"name": "巡逻点2", "x": -0.91, "y": -4.88, "yaw": 1.57},
+    {"name": "巡逻点1", "x": -3.37, "y": -4.41, "yaw": 0.00},
+    {"name": "巡逻点2", "x": 0.47, "y": 0.00, "yaw": 1.57},
 ]
 
-SUPPLY_POINT = {"name": "补给点", "x": -0.53, "y": 0.05, "yaw": 0.00}
+SUPPLY_POINT = {"name": "补给点", "x": -0.83, "y": 0.05, "yaw": 0.00}
 
 
 # ═══════════════════════════════════════
@@ -178,8 +178,8 @@ class AllianceDecisionNode(Node):
 
     def _handle_wait_for_game(self):
         """等待 game_progress == 4 (RUNNING)"""
-        if self.game_status is not None and self.game_status.game_progress == 4:
-            self._log_info("比赛开始! game_progress=4")
+        if self.game_status is not None and self.game_status.game_progress == 0:
+            self._log_info("比赛开始! game_progress=0")
             self.state = State.PATROL
             self.last_patrol_switch_time = self.get_clock().now()
             self.patrol_index = 0

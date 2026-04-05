@@ -17,7 +17,7 @@ def generate_launch_description():
                 'hp_supply_threshold': 120,    # HP 低于此值前往补给
                 'hp_full': 400,                # 满血值
                 'supply_timeout_sec': 5.0,     # 补给点最多待 5 秒
-                'patrol_interval_sec': 5.0,    # 巡逻点切换间隔
+                'patrol_interval_sec': 50.0,   # 巡逻点切换间隔
                 'spin_speed': 7.0,             # 小陀螺转速 rad/s
                 'loop_rate_hz': 10.0,          # 主循环频率
             }],

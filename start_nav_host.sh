@@ -1,7 +1,7 @@
 #!/bin/bash
 # 在宿主机上运行此脚本，会打开多个独立终端窗口
 
-CONTAINER="ros_nav_stable_final"
+CONTAINER="2026rmul"
 
 # 检查容器是否运行
 if ! docker ps | grep -q $CONTAINER; then
@@ -12,6 +12,8 @@ fi
 
 echo "正在启动 ROS2 导航系统..."
 echo "将打开 5 个独立终端窗口"
+
+
 
 # 窗口1：rm_static_tf
 gnome-terminal --title="rm_static_tf" -- bash -c "docker exec -it $CONTAINER bash -c 'cd /root/ros_ws && source install/setup.bash && ros2 launch rm_static_tf static_tf.launch.py'; exec bash" &
@@ -31,10 +33,10 @@ sleep 3
 # 窗口4：my_serial_py
 gnome-terminal --title="my_serial_py" -- bash -c "docker exec -it $CONTAINER bash -c 'cd /root/ros_ws && source install/setup.bash && ros2 launch my_serial_py serial.launch.py'; exec bash" &
 
-sleep 6
+sleep 3
 
 # 窗口5：pb2025_sentry_behavior
-gnome-terminal --title="pb2025_sentry_behavior" -- bash -c "docker exec -it $CONTAINER bash -c 'cd /root/ros_ws && source install/setup.bash && ros2 launch pb2025_sentry_behavior pb2025_sentry_behavior_launch.py'; exec bash" &
+gnome-terminal --title="pb2025_alliance_decision" -- bash -c "docker exec -it $CONTAINER bash -c 'cd /root/ros_ws && source install/setup.bash && ros2 launch pb2025_alliance_decision alliance_decision.launch.py '; exec bash" &
 
 echo "======================================"
 echo "所有终端窗口已启动！"
